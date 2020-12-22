@@ -1,0 +1,21 @@
+opam-version: "2.0.5"
+version: "~dev"
+synopsis: "Advent of Code 2019"
+maintainer:[
+  "Nicholas Sunderland"
+]
+authors: [
+  "Nicholas Sunderland"
+]
+homepage: "https://github.com/nsunderland1/advent_of_code_2019"
+bug-reports: "https://github.com/nsunderland1/advent_of_code_2019/issues"
+depends: [
+  "core"
+  "angstrom"
+  "re2"
+]
+build: [
+  [make]
+]
+dev-repo: "git+https://github.com/nsunderland1/advent_of_code_2019"
+
