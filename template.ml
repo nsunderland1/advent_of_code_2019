@@ -2,8 +2,6 @@ open Core;;
 let (=) = Poly.(=)
 let (<>) = Poly.(<>)
 
-let ignore_empty_lines = true
-
 let parse_line line =
   let open Angstrom in
   let parse parser = Result.ok_or_failwith (parse_string ~consume:All parser line) in
@@ -27,6 +25,5 @@ let print_integer some_int =
 
 let _ =
   let lines = In_channel.read_lines "input" in
-  let lines = if ignore_empty_lines then List.filter ~f:(fun line -> not (phys_equal line "")) lines else lines in
   let data = List.map ~f:parse_line lines in
   data  
