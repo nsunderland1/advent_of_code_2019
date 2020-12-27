@@ -16,7 +16,7 @@ let print_integer some_int =
 
 module StringMap = Map.Make(String)
 
-let count_orbits graph =
+(* let count_orbits graph =
   let rec num_bodies_and_orbits body =
     match StringMap.find graph body with
     | None -> (1, 0)
@@ -28,10 +28,35 @@ let count_orbits graph =
         (1 + total_bodies, total_orbits + total_bodies)
   in
   let (_, orbits) = num_bodies_and_orbits "COM" in
-  orbits
-  
+  orbits *)
+
+let path_to graph target =
+  let rec path_to_aux body =
+    let (let*) o f = Option.bind ~f o in
+    if body = target then
+      Some []
+    else
+      let* children = StringMap.find graph body in
+      let* subpath = List.find_map ~f:path_to_aux children in
+      Some (body::subpath)
+  in
+  Option.value_exn (path_to_aux "COM")
+
+let rec drop_common_prefixes = function
+| [], [] -> [], []
+| [], _ | _, [] -> failwith "Invalid"
+| a::atl, b::btl ->
+    if a = b then
+      drop_common_prefixes (atl, btl)
+    else
+      (a::atl, b::btl)
+
 let _ =
   let lines = In_channel.read_lines "input" in
   let data = List.map ~f:parse_line lines in
   let graph = StringMap.of_alist_multi data in
-  print_integer (count_orbits graph)
+  let you = path_to graph "YOU" in
+  let san = path_to graph "SAN" in
+  let (aRest, bRest) = drop_common_prefixes (you, san) in
+  print_integer (List.length aRest + List.length bRest)
+  (* print_integer (count_orbits graph) *)
