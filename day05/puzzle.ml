@@ -12,11 +12,15 @@ module IntCode = struct
   type 'a t = St of (state -> ('a * state))
 
   type binop = Add | Mul
+  type jmpcond = IfTrue | IfFalse
+  type comp = Lt | Eq
   type opcode =
   | Stop
   | BinOp of binop
   | Input
   | Output
+  | Jump of jmpcond
+  | Compare of comp
 
   let return x = St (fun s -> (x, s))
 
@@ -45,6 +49,10 @@ module IntCode = struct
   | 2 -> BinOp Mul
   | 3 -> Input
   | 4 -> Output
+  | 5 -> Jump IfTrue
+  | 6 -> Jump IfFalse
+  | 7 -> Compare Lt
+  | 8 -> Compare Eq
   | other -> failwith (Printf.sprintf "Invalid opcode %d" other)
 
   let next_opcode =
@@ -54,6 +62,7 @@ module IntCode = struct
 
   let expose_memory = St (fun (program, pc, o) -> (program, (program, pc, o)))
   let get_pc = St (fun (program, Pc pc, o) -> (pc, (program, Pc pc, o)))
+  let set_pc loc = St (fun (program, Pc _, o) -> ((), (program, Pc loc, o)))
   let read_from_address addr =
     let* memory = expose_memory in
     return (IntMap.find_exn memory addr)
@@ -85,6 +94,8 @@ let print_integer some_int =
   Out_channel.output_string stdout (string_of_int some_int)
 
 let intcode_binop_fn = function IntCode.Add -> ( + ) | Mul -> ( * )
+let jump_cond_fn = function IntCode.IfTrue -> ((<>) 0) | IfFalse -> ((=) 0)
+let compare_fn = function IntCode.Lt -> (<) | Eq -> (=)
 
 let step_intcode =
   let open IntCode in
@@ -106,6 +117,23 @@ let step_intcode =
   | Output ->
       let* a = read_param in
       print_integer a;
+      return `Continue
+  | Jump cond ->
+      let* test = read_param in
+      let* loc = read_param in
+      let* _ =
+        if jump_cond_fn cond test then
+          set_pc loc
+        else
+          return ()
+      in
+      return `Continue
+  | Compare comp ->
+      let* a = read_param in
+      let* b = read_param in
+      let* dest = next_value in
+      let res = Bool.to_int (compare_fn comp a b) in
+      let* _ = write ~dest ~value:res in
       return `Continue
 
 let rec run_intcode () =
