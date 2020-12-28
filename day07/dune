@@ -1,0 +1,3 @@
+(executable
+ (name puzzle)
+ (libraries core angstrom re2 intcode))
