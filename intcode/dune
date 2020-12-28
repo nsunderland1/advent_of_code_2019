@@ -1,0 +1,3 @@
+(library
+ (name intcode)
+ (libraries core angstrom))
