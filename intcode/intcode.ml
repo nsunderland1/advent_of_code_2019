@@ -4,10 +4,12 @@ let (<>) = Poly.(<>)
 
 module IntMap = Map.Make(Int)
 type program = int IntMap.t               (* Maps addresses to values *)
-type pc = Pc of int                       (* Program counter*)
 type mode = Position | Immediate          (* Parameter mode *)
-type omodes = Om of int                   (* Numeric code for determining param mode *)
-type state = int IntMap.t * pc * omodes 
+type state = {
+  program: int IntMap.t;
+  pc: int;
+  omodes: int;
+}
 type 'a t = St of (state -> ('a * state)) (* State monad *)
 
 type binop = Add | Mul
@@ -32,16 +34,16 @@ let (>>=) (St f) g = St (fun s0 ->
 
 let (let*) = (>>=)
 
-let next_value = St (fun (program, Pc pc, o) ->
-  (IntMap.find_exn program pc, (program, Pc (pc+1), o)))
+let next_value = St (fun ({program; pc; _} as state) ->
+  (IntMap.find_exn program pc, {state with pc=pc+1}))
 
 let to_mode = function
 | 0 -> Position
 | 1 -> Immediate
 | _ -> failwith "Invalid parameter mode"
 
-let next_mode = St (fun (program, pc, Om omodes) -> (to_mode (omodes mod 10), (program, pc, Om (omodes / 10))))
-let update_omodes omodes = St (fun (program, pc, _) -> ((), (program, pc, Om omodes)))
+let next_mode = St (fun ({omodes; _} as state) -> (to_mode (omodes mod 10), {state with omodes=omodes/10}))
+let update_omodes omodes = St (fun state -> ((), {state with omodes}))
 
 let get_opcode = function
 | 99 -> Stop
@@ -60,9 +62,9 @@ let next_opcode =
   let* _ = update_omodes (next/100) in
   return (get_opcode (next % 100))
 
-let expose_memory = St (fun (program, pc, o) -> (program, (program, pc, o)))
+let expose_memory = St (fun state -> (state.program, state))
 (* let get_pc = St (fun (program, Pc pc, o) -> (pc, (program, Pc pc, o))) *)
-let set_pc loc = St (fun (program, Pc _, o) -> ((), (program, Pc loc, o)))
+let set_pc loc = St (fun state -> ((), {state with pc=loc}))
 let read_from_address addr =
   let* memory = expose_memory in
   return (IntMap.find_exn memory addr)
@@ -74,8 +76,8 @@ let read_param =
   | Position -> read_from_address next
   | Immediate -> return next
 
-let write ~dest ~value = St (fun (program, pc, o) ->
-    ((), (IntMap.set program ~key:dest ~data:value, pc, o))
+let write ~dest ~value = St (fun ({program; _} as state) ->
+    ((), {state with program=IntMap.set program ~key:dest ~data:value})
   )
 
 let parse line =
@@ -148,5 +150,5 @@ let run ?(pc=0) program =
     match res with `Stop -> return () | `Continue -> run_aux ()
   in
   let (St s) = run_aux () in
-  let (_, (final_program, Pc final_pc, _)) = s (program, Pc pc, Om 0) in
+  let (_, {program=final_program; pc=final_pc; _}) = s {program; pc; omodes=0} in
   (final_program, final_pc)
