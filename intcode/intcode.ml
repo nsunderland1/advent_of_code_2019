@@ -5,12 +5,28 @@ let (<>) = Poly.(<>)
 module IntMap = Map.Make(Int)
 type program = int IntMap.t               (* Maps addresses to values *)
 type mode = Position | Immediate          (* Parameter mode *)
-type state = {
+type ('in_, 'out) state = {
   program: int IntMap.t;
   pc: int;
   omodes: int;
+  input_state: 'in_;
+  read_input: 'in_ -> int * 'in_;
+  output_state: 'out;
+  write_output: 'out -> int -> 'out;
 }
-type 'a t = St of (state -> ('a * state)) (* State monad *)
+
+type 'in_ input = {
+  istate: 'in_; 
+  read: 'in_ -> int * 'in_;
+}
+
+type 'out output = {
+  ostate: 'out;
+  write: 'out -> int -> 'out; 
+}
+
+type ('in_, 'out, 'a) t =
+| St of (('in_, 'out) state -> ('a * ('in_, 'out) state)) (* State monad *)
 
 type binop = Add | Mul
 type jmpcond = IfTrue | IfFalse
@@ -57,7 +73,7 @@ let get_opcode = function
 | 8 -> Compare Eq
 | other -> failwith (Printf.sprintf "Invalid opcode %d" other)
 
-let next_opcode =
+let next_opcode () =
   let* next = next_value in
   let* _ = update_omodes (next/100) in
   return (get_opcode (next % 100))
@@ -69,7 +85,7 @@ let read_from_address addr =
   let* memory = expose_memory in
   return (IntMap.find_exn memory addr)
 
-let read_param =
+let read_param () =
   let* next = next_value in
   let* mode = next_mode in
   match mode with
@@ -98,37 +114,44 @@ let parse line =
     >>| List.mapi ~f:(fun i value -> (i, value))
     >>| IntMap.of_alist_exn
   )   
-let print_integer some_int =
-  print_endline "";
-  Out_channel.output_string stdout (string_of_int some_int)
 
 let intcode_binop_fn = function Add -> ( + ) | Mul -> ( * )
 let jump_cond_fn = function IfTrue -> ((<>) 0) | IfFalse -> ((=) 0)
 let compare_fn = function Lt -> (<) | Eq -> (=)
 
-let step_intcode =
-  let* opcode = next_opcode in
+let get_input = St (fun ({input_state; read_input; _} as state) ->
+    let (read, updated_state) = read_input input_state in
+    (read, {state with input_state=updated_state })
+  )
+
+let do_output value = St (fun ({output_state; write_output; _} as state) ->
+    let updated_state = write_output output_state value in
+    ((), {state with output_state=updated_state})
+  )
+
+let step_intcode () =
+  let* opcode = next_opcode () in
   match opcode with
   | Stop -> return `Stop 
   | BinOp op -> (
-      let* a = read_param in
-      let* b = read_param in
+      let* a = read_param () in
+      let* b = read_param () in
       let* res = next_value in
       let* _ = write ~dest:res ~value:(intcode_binop_fn op a b) in
       return `Continue 
   )
   | Input ->
-      let input = Option.value_exn (In_channel.(input_line stdin)) |> Int.of_string in
+      let* input = get_input in
       let* res = next_value in
       let* _ = write ~dest:res ~value:input in
       return `Continue
   | Output ->
-      let* a = read_param in
-      print_integer a;
+      let* a = read_param () in
+      let* _ = do_output a in
       return `Continue
   | Jump cond ->
-      let* test = read_param in
-      let* loc = read_param in
+      let* test = read_param () in
+      let* loc = read_param () in
       let* _ =
         if jump_cond_fn cond test then
           set_pc loc
@@ -137,18 +160,49 @@ let step_intcode =
       in
       return `Continue
   | Compare comp ->
-      let* a = read_param in
-      let* b = read_param in
+      let* a = read_param () in
+      let* b = read_param () in
       let* dest = next_value in
       let res = Bool.to_int (compare_fn comp a b) in
       let* _ = write ~dest ~value:res in
       return `Continue
 
-let run ?(pc=0) program =
+let print_integer some_int =
+  print_endline "";
+  Out_channel.output_string stdout (string_of_int some_int)
+
+let read_default () =
+  let read = Option.value_exn (In_channel.(input_line stdin)) |> Int.of_string in
+  (read, ())
+
+let write_default () =
+  print_integer
+
+let stdin = {
+  istate = ();
+  read = read_default;
+}
+
+let stdout = {
+  ostate = ();
+  write = write_default;
+}
+
+let run ?(pc=0) ~input ~output program =
   let rec run_aux () =
-    let* res = step_intcode in
+    let* res = step_intcode () in
     match res with `Stop -> return () | `Continue -> run_aux ()
   in
   let (St s) = run_aux () in
-  let (_, {program=final_program; pc=final_pc; _}) = s {program; pc; omodes=0} in
+  let initial_state = {
+    program;
+    pc;
+    omodes = 0;
+    input_state = input.istate;
+    read_input = input.read;
+    output_state = output.ostate;
+    write_output = output.write;
+  }
+  in
+  let (_, {program=final_program; pc=final_pc; _}) = s initial_state in
   (final_program, final_pc)
