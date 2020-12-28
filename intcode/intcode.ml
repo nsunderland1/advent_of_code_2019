@@ -129,6 +129,10 @@ let do_output value = St (fun ({output_state; write_output; _} as state) ->
     ((), {state with output_state=updated_state})
   )
 
+let print_integer some_int =
+  print_endline "";
+  Out_channel.output_string stdout (string_of_int some_int)
+
 let step_intcode () =
   let* opcode = next_opcode () in
   match opcode with
@@ -167,10 +171,6 @@ let step_intcode () =
       let* _ = write ~dest ~value:res in
       return `Continue
 
-let print_integer some_int =
-  print_endline "";
-  Out_channel.output_string stdout (string_of_int some_int)
-
 let read_default () =
   let read = Option.value_exn (In_channel.(input_line stdin)) |> Int.of_string in
   (read, ())
@@ -204,5 +204,5 @@ let run ?(pc=0) ~input ~output program =
     write_output = output.write;
   }
   in
-  let (_, {program=final_program; pc=final_pc; _}) = s initial_state in
-  (final_program, final_pc)
+  let (_, {program=final_program; pc=final_pc; output_state; _}) = s initial_state in
+  (final_program, final_pc, output_state)

@@ -21,4 +21,4 @@ val run :
   input:'in_ input ->
   output:'out output ->
   program ->
-  program * int
+  program * int * 'out
