@@ -22,9 +22,30 @@ let print_integer some_int =
 let count layer digit =
   layer |> List.map ~f:(List.count ~f:((=) digit)) |> List.reduce_exn ~f:(+)
 
+let advance = function
+| [] | []::_ -> failwith "We should never get here"
+| [el]::tl -> (el, tl)
+| (el::hd)::tl -> (el, hd::tl)
+
+let merge_layers layers =
+  let rec aux layers =
+    if List.for_all ~f:List.is_empty layers then
+      []
+    else
+      let (candidates, rest) = layers |> List.map ~f:advance |> List.unzip in
+      let colour = List.find_exn ~f:(fun n -> n = 0 || n = 1) candidates in
+      colour::(aux rest)
+  in
+  layers |> aux |> List.groupi ~break:(fun index _ _ -> index mod width = 0)
+
 let _ =
   let input = In_channel.read_all "input" |> String.rstrip in
   let layers = parse_line input in
-  let min = List.min_elt ~compare:(fun a b -> Int.compare (count a 0) (count b 0)) layers in
+  let result = merge_layers layers in
+  print_endline "";
+  List.iter ~f:(fun row ->
+      row |> List.map ~f:Int.to_string |> String.concat |> String.tr ~target:'0' ~replacement:' ' |> Out_channel.print_endline
+    ) result
+  (* let min = List.min_elt ~compare:(fun a b -> Int.compare (count a 0) (count b 0)) layers in
   let min = Option.value_exn min in
-  print_integer ((count min 1) * (count min 2))
+  print_integer ((count min 1) * (count min 2)) *)
